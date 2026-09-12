@@ -34,23 +34,31 @@ jobs:
       - name: Install buildozer
         run: pip3 install buildozer==1.5.0 cython==0.29.36 virtualenv
 
+      - name: Pre-seed freetype source into p4a package cache
+        run: |
+          # Savannah 死站 502。p4a 的跳过下载逻辑：当 packages/freetype/ 下同时存在
+          #   freetype-2.10.1.tar.gz        （tarball 本体）
+          #   .mark-freetype-2.10.1.tar.gz  （空标记文件）
+          # 时，它就直接复用、不再访问 Savannah。这里从 SourceForge 下载并放到位。
+          set -e
+          FT_DIR=".buildozer/android/platform/build-arm64-v8a/packages/freetype"
+          mkdir -p "$FT_DIR"
+          TARBALL="$FT_DIR/freetype-2.10.1.tar.gz"
+          for i in 1 2 3 4 5; do
+            echo "=== freetype download attempt $i ==="
+            curl -fSL --retry 3 -o "$TARBALL" \
+              "https://downloads.sourceforge.net/project/freetype/freetype2/2.10.1/freetype-2.10.1.tar.gz" \
+              && file "$TARBALL" | grep -qi gzip && break
+            echo "attempt $i failed"; rm -f "$TARBALL"; sleep 5
+          done
+          test -s "$TARBALL" && file "$TARBALL" | grep -qi gzip
+          touch "$FT_DIR/.mark-freetype-2.10.1.tar.gz"
+          echo "=== seeded freetype package cache ==="
+          ls -la "$FT_DIR"
+
       - name: Build APK
         run: |
           set -e
-          # 第一段：buildozer 首次运行会把 p4a 克隆到 .buildozer/android/platform/python-for-android，
-          # 随后在 freetype（Savannah 死站 502）处失败。忽略这次失败，目的是拿到 p4a 源码。
-          echo "=== first run: let buildozer clone p4a (expected to fail at freetype) ==="
-          buildozer android debug || true
-
-          # 第二段：直接改 buildozer 克隆下来的 p4a freetype 食谱，把死站换成 SourceForge 镜像。
-          FT=.buildozer/android/platform/python-for-android/pythonforandroid/recipes/freetype/__init__.py
-          echo "=== original freetype recipe url ==="; grep -n "url" "$FT"
-          sed -i \
-            's#https://download.savannah.gnu.org/releases/freetype/freetype-{version}.tar.gz#https://downloads.sourceforge.net/project/freetype/freetype2/{version}/freetype-{version}.tar.gz#' \
-            "$FT"
-          echo "=== patched freetype recipe url ==="; grep -n "url" "$FT"
-
-          # 第三段：真正构建（buildozer 复用已克隆且打了补丁的 p4a）。
           ok=0
           for i in 1 2 3 4 5 6 7 8; do
             echo "=== buildozer attempt $i ==="
