@@ -1,25 +1,29 @@
 # -*- coding: utf-8 -*-
-"""游资席位匹配引擎"""
-import pandas as pd
+"""游资席位匹配引擎（纯 Python list[dict] 数据层）"""
 from yzy_seats import YZY_SEATS, LEVEL_SCORE, SMASHER_TAGS, COMBO_BONUS
 
 
 class SeatMatcher:
-    """输入龙虎榜席位明细，输出 {code: 席位特征} 字典。
-    明细需含列: 代码 / 交易营业部名称 / 买入金额 / 卖出金额
+    """输入龙虎榜席位明细 list[dict]，输出 {code: 席位特征} 字典。
+    明细需含字段: 代码 / 交易营业部名称 / 买入金额 / 卖出金额
     """
 
-    def match(self, detail: pd.DataFrame) -> dict:
+    def match(self, detail):
         result = {}
-        if detail is None or detail.empty:
+        if not detail:
             return result
 
-        for code, grp in detail.groupby("代码"):
+        # group by 代码
+        groups = {}
+        for row in detail:
+            groups.setdefault(str(row.get("代码", "")).zfill(6), []).append(row)
+
+        for code, grp in groups.items():
             seats, tags = [], set()
             max_level, top_tag = "C", "无"
             smasher = False
 
-            for _, row in grp.iterrows():
+            for row in grp:
                 dept = str(row.get("交易营业部名称", ""))
                 net = float(row.get("买入金额", 0) or 0) - \
                       float(row.get("卖出金额", 0) or 0)
@@ -33,7 +37,7 @@ class SeatMatcher:
 
             score = self._seat_score(seats, max_level)
             combo = sum(v for k, v in COMBO_BONUS.items() if k.issubset(tags))
-            result[str(code)] = {
+            result[code] = {
                 "max_level":   max_level,
                 "top_tag":     top_tag if top_tag != "无" else "未知",
                 "seat_score":  max(0, min(100, score + combo)),

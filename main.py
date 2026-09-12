@@ -73,13 +73,13 @@ class YaoStockApp(App):
         finally:
             Clock.schedule_once(lambda dt: setattr(self.btn, "disabled", False))
 
-    def _render(self, df, msg):
+    def _render(self, rows, msg):
         self._draw_header()
-        if df.empty:
+        if not rows:
             self.lbl_status.text = f"无符合条件个股（{msg}）"
             return
-        n = len(df)
-        for _, r in df.head(TOP_N_SHOW).iterrows():
+        n = len(rows)
+        for r in rows[:TOP_N_SHOW]:
             hot = r["妖股概率"] >= 75
             c_hot = (1, .3, .3, 1) if hot else (1, 1, 1, 1)
             yzy_color = (1, .85, 0, 1) if r["top_yzy"] not in ("无", "未知") \

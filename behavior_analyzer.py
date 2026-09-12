@@ -1,14 +1,20 @@
 # -*- coding: utf-8 -*-
-"""行为因子：封单强度 / 撤单率估算 / 分时异动（免费数据源近似版）
+"""行为因子：封单强度 / 撤单率估算 / 分时异动（免费数据源近似版，纯 Python）
 盘中(9:30-15:00)调用才有完整意义；竞价阶段自动降级为中性分。
+分钟K线用 list[dict] 表示，字段: time/close/volume/amount（数值型）。
 """
 import time
 import requests
-import pandas as pd
-import numpy as np
 
 EM_UT = "7eea3edcaed734bea9cbfc24409ed989"
 HEADERS = {"User-Agent": "Mozilla/5.0 (Linux; Android 13)"}
+
+
+def _f(x):
+    try:
+        return float(x)
+    except Exception:
+        return 0.0
 
 
 class BehaviorAnalyzer:
@@ -37,8 +43,8 @@ class BehaviorAnalyzer:
         minutes = BehaviorAnalyzer.minute_kline(code, limit=3)
         if len(minutes) < 2:
             return 50, 0.30, "数据不足(中性)"
-        v_prev = minutes["volume"].iloc[-2]
-        v_curr = minutes["volume"].iloc[-1]
+        v_prev = minutes[-2]["volume"]
+        v_curr = minutes[-1]["volume"]
         shrink = 1 - v_curr / v_prev if v_prev > 0 else 0
         if shrink > 0.7 and buy1_vol_hand > 5000:
             return 90, 0.10, "量缩封稳"
@@ -52,17 +58,30 @@ class BehaviorAnalyzer:
     @staticmethod
     def intraday_anomaly(code):
         minutes = BehaviorAnalyzer.minute_kline(code, limit=60)
-        if len(minutes) < 10:
+        n = len(minutes)
+        if n < 10:
             return 50, "数据不足(中性)"
-        avg_vol = minutes["volume"].mean()
-        big_buys = int((minutes["volume"] > avg_vol * 3).sum())   # 大单脉冲次数
-        vwap = (minutes["amount"].cumsum() /
-                minutes["volume"].cumsum().replace(0, np.nan))
-        above = float((minutes["close"] >= vwap).fillna(False).mean())
-        if len(minutes) >= 20:
-            recent = minutes["close"].iloc[-1] / minutes["close"].iloc[-10] - 1
-            earlier = minutes["close"].iloc[-11] / minutes["close"].iloc[-20] - 1
-            accel = float(recent - earlier)
+        vols = [m["volume"] for m in minutes]
+        closes = [m["close"] for m in minutes]
+        amounts = [m["amount"] for m in minutes]
+        avg_vol = sum(vols) / n
+        big_buys = sum(1 for v in vols if v > avg_vol * 3)   # 大单脉冲次数
+
+        # vwap 逐分钟：累计金额/累计量
+        cum_amt, cum_vol = 0.0, 0.0
+        above = 0
+        for i in range(n):
+            cum_amt += amounts[i]
+            cum_vol += vols[i]
+            vwap = cum_amt / cum_vol if cum_vol else 0.0
+            if closes[i] >= vwap:
+                above += 1
+        above /= n
+
+        if n >= 20:
+            recent = closes[-1] / closes[-10] - 1
+            earlier = closes[-11] / closes[-20] - 1
+            accel = recent - earlier
         else:
             accel = 0.0
         score = (min(35, big_buys * 7) + min(35, above * 40) +
@@ -91,12 +110,17 @@ class BehaviorAnalyzer:
                 timeout=6, headers=HEADERS).json()
             klines = (resp.get("data") or {}).get("klines") or []
             if not klines:
-                return pd.DataFrame(columns=["time", "close", "volume", "amount"])
-            rows = [k.split(",") for k in klines]
-            df = pd.DataFrame(rows, columns=["time", "close", "volume", "amount"])
-            for c in ("close", "volume", "amount"):
-                df[c] = pd.to_numeric(df[c], errors="coerce")
+                return []
+            rows = []
+            for k in klines[-limit:]:
+                parts = k.split(",")
+                rows.append({
+                    "time": parts[0],
+                    "close": _f(parts[1]),
+                    "volume": _f(parts[2]),
+                    "amount": _f(parts[3]),
+                })
             time.sleep(0.15)
-            return df.tail(limit).reset_index(drop=True)
+            return rows
         except Exception:
-            return pd.DataFrame(columns=["time", "close", "volume", "amount"])
+            return []

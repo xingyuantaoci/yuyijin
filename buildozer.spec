@@ -8,11 +8,11 @@ source.include_exts = py,png,jpg,kv,atlas
 source.exclude_dirs = bin, .buildozer, __pycache__, .venv, bt_cache
 version = 1.0.0
 
-# 关键：不含 akshare，仅保留安卓可编译依赖（pandas/numpy 版本与 NDK25 匹配）
+# 关键：不含 akshare，数据层已改为纯 Python（list[dict]），无 pandas/numpy 重型 C 库
 requirements = python3,kivy==2.3.0,pillow,openssl,sqlite3,
     requests,urllib3,certifi,charset_normalizer,idna,
-    pandas==2.0.3,numpy==1.22.3,setuptools,
-    android,pyjnius,et_xmlfile
+    setuptools,et_xmlfile,
+    android,pyjnius
 
 orientation = portrait
 fullscreen = 0

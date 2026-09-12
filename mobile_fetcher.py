@@ -1,8 +1,8 @@
 # -*- coding: utf-8 -*-
-"""移动端/本地数据层：纯 requests 直连东方财富公开接口，无 akshare 依赖。
+"""移动端/本地数据层：纯 requests 直连东方财富公开接口，无 akshare / pandas 依赖。
 
 PC 命令行版与 APK 版共用本模块（APK 版直接 import 本文件）。
-接口字段与量纲已通过 2026-09-11 实盘数据验证：
+表格统一用 list[dict] 表示（空表为 []），字段与量纲已通过 2026-09-11 实盘数据验证：
   - 涨停池  getTopicZTPool：hs 换手率已是百分比（如 10.47 即 10.47%），不要再除以 1000
   - 龙虎榜  RPT_DAILYBILLBOARD_DETAILSNEW：BILLBOARD_NET_AMT 单位元，可为负
   - 席位明细 买入报表 RPT_BILLBOARD_DAILYDETAILSBUY / 卖出报表 RPT_BILLBOARD_DAILYDETAILSSELL（注意是双 S）
@@ -12,7 +12,6 @@ PC 命令行版与 APK 版共用本模块（APK 版直接 import 本文件）。
 """
 import time
 import requests
-import pandas as pd
 from datetime import datetime
 
 UT = "7eea3edcaed734bea9cbfc24409ed989"
@@ -55,20 +54,23 @@ class DataFetcher:
 
     # ---------- 涨停池（东财涨停板行情专题接口） ----------
     def limit_up_pool_3d(self):
-        frames = []
+        rows_all = []
         for d in self.recent_trade_dates(3):
             rows = self._zt_pool_one_day(d)
-            if rows is not None and not rows.empty:
-                rows["zt_date"] = d
-                frames.append(rows)
+            if rows:
+                for r in rows:
+                    r["zt_date"] = d
+                rows_all.extend(rows)
             time.sleep(0.4)
-        if not frames:
-            return pd.DataFrame()
-        pool = pd.concat(frames, ignore_index=True)
+        if not rows_all:
+            return []
         # 同一股票保留连板数最大的记录（同板数时保留更近一天）
-        pool = pool.sort_values(["代码", "连板数", "zt_date"]) \
-                   .groupby("代码", as_index=False).last()
-        return pool
+        best = {}
+        for r in rows_all:
+            code = r["代码"]
+            if code not in best or (r["连板数"], r["zt_date"]) > (best[code]["连板数"], best[code]["zt_date"]):
+                best[code] = r
+        return list(best.values())
 
     @staticmethod
     def _zt_pool_one_day(date):
@@ -80,8 +82,8 @@ class DataFetcher:
                 timeout=8, headers=HEADERS).json()
             items = ((resp.get("data") or {}).get("pool")) or []
             if not items:
-                return None
-            rows = [{
+                return []
+            return [{
                 "代码": str(it.get("c", "")).zfill(6),
                 "名称": it.get("n", ""),
                 "连板数": it.get("lbc", 1) or 1,
@@ -90,28 +92,43 @@ class DataFetcher:
                 "流通市值": (it.get("ltsz", 0) or 0),      # 元
                 "炸板次数": it.get("zbc", 0) or 0,
             } for it in items]
-            return pd.DataFrame(rows)
         except Exception:
-            return None
+            return []
 
     # ---------- 龙虎榜（数据中心接口） ----------
     def lhb_recent(self):
-        frames = []
+        rows_all = []
         for d in self.recent_trade_dates(3):
-            df = self._lhb_one_day(d)
-            if df is not None and not df.empty:
-                frames.append(df)
+            rows = self._lhb_one_day(d)
+            if rows:
+                rows_all.extend(rows)
             time.sleep(0.4)
-        if not frames:
-            return pd.DataFrame()
-        lhb = pd.concat(frames, ignore_index=True)
-        agg = lhb.groupby("代码", as_index=False).agg(
-            lhb_net_buy=("龙虎榜净买额", "sum"),
-            lhb_date=("上榜日期", "max"),
-            lhb_reason=("上榜原因", lambda x: "/".join(sorted(set(x.dropna().astype(str))))),
-        )
-        agg["代码"] = agg["代码"].astype(str).str.zfill(6)
-        return agg
+        if not rows_all:
+            return []
+        # group by 代码：净买额求和、上榜日期取最大、原因去重拼接
+        agg = {}
+        for r in rows_all:
+            code = str(r["代码"]).zfill(6)
+            a = agg.get(code)
+            if a is None:
+                agg[code] = {
+                    "代码": code,
+                    "lhb_net_buy": r["龙虎榜净买额"],
+                    "lhb_date": r["上榜日期"],
+                    "lhb_reason_set": {str(r["上榜原因"])} if r["上榜原因"] else set(),
+                }
+            else:
+                a["lhb_net_buy"] += r["龙虎榜净买额"]
+                if r["上榜日期"] > a["lhb_date"]:
+                    a["lhb_date"] = r["上榜日期"]
+                if r["上榜原因"]:
+                    a["lhb_reason_set"].add(str(r["上榜原因"]))
+        out = []
+        for a in agg.values():
+            rs = sorted(x for x in a.pop("lhb_reason_set") if x and x != "None")
+            a["lhb_reason"] = "/".join(rs)
+            out.append(a)
+        return out
 
     @staticmethod
     def _lhb_one_day(date):
@@ -126,23 +143,22 @@ class DataFetcher:
             }, timeout=8, headers=HEADERS).json()
             data = (resp.get("result") or {}).get("data") or []
             if not data:
-                return None
-            rows = [{
+                return []
+            return [{
                 "代码": str(it.get("SECURITY_CODE", "")).zfill(6),
                 "名称": it.get("SECURITY_NAME_ABBR", ""),
                 "上榜日期": str(it.get("TRADE_DATE", ""))[:10],
                 "龙虎榜净买额": it.get("BILLBOARD_NET_AMT", 0) or 0,   # 元，可为负
                 "上榜原因": it.get("EXPLANATION", ""),
             } for it in data]
-            return pd.DataFrame(rows)
         except Exception:
-            return None
+            return []
 
     # ---------- 龙虎榜席位明细（用于游资识别） ----------
-    def lhb_seat_detail(self, code: str, date: str) -> pd.DataFrame:
-        """code: 6位代码, date: YYYYMMDD。返回买入+卖出席位合并明细。"""
+    def lhb_seat_detail(self, code: str, date: str):
+        """code: 6位代码, date: YYYYMMDD。返回买入+卖出席位合并明细 list[dict]。"""
         ymd = f"{date[:4]}-{date[4:6]}-{date[6:]}"
-        frames = []
+        rows = []
         # 注意卖出报表名是双 S：RPT_BILLBOARD_DAILYDETAILSSELL（实测单 S 报表不存在）
         for rpt in ("RPT_BILLBOARD_DAILYDETAILSBUY", "RPT_BILLBOARD_DAILYDETAILSSELL"):
             try:
@@ -156,18 +172,17 @@ class DataFetcher:
                               f'(SECURITY_CODE="{code}")',
                 }, timeout=8, headers=HEADERS).json()
                 data = (resp.get("result") or {}).get("data") or []
-                if data:
-                    rows = [{
+                for it in data:
+                    rows.append({
                         "代码": str(code).zfill(6),
                         "交易营业部名称": it.get("OPERATEDEPT_NAME", ""),
                         "买入金额": it.get("BUY", 0) or 0,
                         "卖出金额": it.get("SELL", 0) or 0,
-                    } for it in data]
-                    frames.append(pd.DataFrame(rows))
+                    })
             except Exception:
                 pass
             time.sleep(0.3)
-        return pd.concat(frames, ignore_index=True) if frames else pd.DataFrame()
+        return rows
 
     # ---------- 竞价快照（9:25~9:30 调用才有意义） ----------
     EM_FIELDS = ("f43,f47,f60,f84,f85,f116,f117,f168,f170,"
@@ -183,7 +198,7 @@ class DataFetcher:
             if (i + 1) % 30 == 0:
                 print(f"   快照进度 {i+1}/{len(codes)}")
             time.sleep(0.12)
-        return pd.DataFrame(rows)
+        return rows
 
     def _em_quote(self, code):
         secid = ("1." if code.startswith("6") else "0.") + code
