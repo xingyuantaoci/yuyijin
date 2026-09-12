@@ -34,16 +34,33 @@ jobs:
       - name: Install buildozer
         run: pip3 install buildozer==1.5.0 cython==0.29.36 virtualenv
 
+      - name: Pre-fetch freetype from reliable mirror
+        run: |
+          # Savannah 下载站持续 502，提前从 SourceForge 把 freetype 下到
+          # p4a 的包缓存目录；p4a 检测到文件已存在就跳过该下载。
+          mkdir -p .buildozer/android/platform/build-arm64-v8a/packages/freetype
+          FT=.buildozer/android/platform/build-arm64-v8a/packages/freetype/freetype-2.10.1.tar.gz
+          for i in 1 2 3 4 5 6; do
+            echo "=== freetype prefetch attempt $i ==="
+            curl -fSL --retry 3 -o "$FT" \
+              "https://downloads.sourceforge.net/project/freetype/freetype2/2.10.1/freetype-2.10.1.tar.gz" && {
+              echo "freetype fetched:"; ls -la "$FT"; file "$FT"; break;
+            }
+            echo "attempt $i failed"; rm -f "$FT"; sleep 5
+          done
+          test -s "$FT" && file "$FT" | grep -qi gzip
+
       - name: Build APK
         run: |
-          # Savannah 等下载源偶发 502，buildozer 失败就自动重跑；
-          # 已下载的文件缓存在 .buildozer，重跑只重试失败的那个下载。
+          ok=0
           for i in 1 2 3 4 5 6 7 8; do
             echo "=== buildozer attempt $i ==="
-            buildozer android debug && { echo "BUILD OK on attempt $i"; break; }
+            if buildozer android debug; then ok=1; echo "BUILD OK on attempt $i"; break; fi
             echo "attempt $i failed, retry in 15s..."
             sleep 15
           done
+          if [ "$ok" != "1" ]; then echo "::error::buildozer failed on all 8 attempts"; exit 1; fi
+          ls -la bin/
         env:
           JAVA_HOME: /usr/lib/jvm/java-17-openjdk-amd64
 
