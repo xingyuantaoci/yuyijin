@@ -1,15 +1,15 @@
 # ============================================================
 # 妖股竞价选股器 APK 云端构建（GitHub Actions）
-# 用法：把整个 yaostock 工程推到 GitHub 仓库（含本文件），
-#       在仓库 Actions 页触发 "Build APK" 工作流，
-#       约 30~60 分钟后在 Actions 页面下载 bin/*.apk 即可。
+# 直接在 ubuntu runner 上安装 buildozer 打包（不依赖 Docker action）。
+# 触发：push 到 main / Actions 页手动触发。
+# 产物：运行页底部 Artifacts -> yaostock-apk
 # ============================================================
 name: Build APK
 
 on:
   push:
     branches: [ "main", "master" ]
-  workflow_dispatch:      # 允许在 Actions 页面手动触发
+  workflow_dispatch:
 
 jobs:
   build:
@@ -18,11 +18,26 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Build APK (buildozer android debug)
-        uses: ArtemSBulgakov/buildozer-action@v1
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
         with:
-          command: buildozer android debug
-          buildozer_version: stable
+          python-version: "3.11"
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            openjdk-17-jdk-headless build-essential git zip unzip \
+            autoconf libtool pkg-config zlib1g-dev libncurses-dev \
+            libssl-dev automake cmake libffi-dev liblzma-dev
+
+      - name: Install buildozer
+        run: pip3 install buildozer==1.5.0 cython==0.29.36 virtualenv
+
+      - name: Build APK
+        run: buildozer android debug
+        env:
+          JAVA_HOME: /usr/lib/jvm/java-17-openjdk-amd64
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
