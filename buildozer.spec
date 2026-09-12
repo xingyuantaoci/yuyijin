@@ -9,7 +9,7 @@ source.exclude_dirs = bin, .buildozer, __pycache__, .venv, bt_cache
 version = 1.0.0
 
 # 关键：不含 akshare，仅保留安卓可编译依赖（pandas/numpy 版本与 NDK25 匹配）
-requirements = python3==3.11.6,kivy==2.3.0,pillow,openssl,sqlite3,
+requirements = python3,kivy==2.3.0,pillow,openssl,sqlite3,
     requests,urllib3,certifi,charset_normalizer,idna,
     pandas==2.0.3,numpy==1.24.3,setuptools,
     android,pyjnius,et_xmlfile
@@ -34,7 +34,7 @@ android.archs = arm64-v8a
 
 # 关闭不必要的东西
 android.debug = False
-p4a.branch = develop
+p4a.branch = v2024.01.21
 release.artifact_formats = apk
 
 [buildozer]
