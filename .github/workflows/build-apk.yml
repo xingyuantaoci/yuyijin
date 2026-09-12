@@ -1,0 +1,31 @@
+# ============================================================
+# 妖股竞价选股器 APK 云端构建（GitHub Actions）
+# 用法：把整个 yaostock 工程推到 GitHub 仓库（含本文件），
+#       在仓库 Actions 页触发 "Build APK" 工作流，
+#       约 30~60 分钟后在 Actions 页面下载 bin/*.apk 即可。
+# ============================================================
+name: Build APK
+
+on:
+  push:
+    branches: [ "main", "master" ]
+  workflow_dispatch:      # 允许在 Actions 页面手动触发
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build APK (buildozer android debug)
+        uses: ArtemSBulgakov/buildozer-action@v1
+        with:
+          command: buildozer android debug
+          buildozer_version: stable
+
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: yaostock-apk
+          path: bin/*.apk

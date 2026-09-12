@@ -1,0 +1,5 @@
+# PC 命令行版依赖（APK 版由 buildozer.spec 的 requirements 声明，不需要 kivy）
+requests>=2.31.0
+pandas>=2.0.0
+numpy>=1.24.0
+# 打包 APK 才需要：kivy==2.3.0（见 buildozer.spec）
