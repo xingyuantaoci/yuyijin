@@ -36,25 +36,24 @@ jobs:
 
       - name: Pre-fetch freetype from reliable mirror
         run: |
-          # Savannah 下载站持续 502，提前从 SourceForge 把 freetype 下到
-          # p4a 的包缓存目录（PACKAGES_PATH=/home/runner/.buildozer/android/packages）；
-          # p4a 检测到文件已存在就跳过该下载。同时放到构建目录做兜底。
+          # Savannah 下载站持续 502。p4a 判断 freetype 是否已下载完成的依据是
+          # "解压后的源码目录 packages/freetype/freetype-2.10.1/" 是否存在；
+          # 只放 tarball 无效（仍会重新下载）。这里从 SourceForge 下载并解压到位。
+          set -e
           FT_URL="https://downloads.sourceforge.net/project/freetype/freetype2/2.10.1/freetype-2.10.1.tar.gz"
-          for d in \
-            "$HOME/.buildozer/android/packages" \
-            ".buildozer/android/platform/build-arm64-v8a/packages/freetype"; do
-            mkdir -p "$d"
-            FT="$d/freetype-2.10.1.tar.gz"
-            for i in 1 2 3 4 5 6; do
-              echo "=== prefetch -> $FT (attempt $i) ==="
-              curl -fSL --retry 3 -o "$FT" "$FT_URL" && {
-                ls -la "$FT"; file "$FT"; break;
-              }
-              echo "attempt $i failed"; rm -f "$FT"; sleep 5
-            done
+          FT_DIR=".buildozer/android/platform/build-arm64-v8a/packages/freetype"
+          mkdir -p "$FT_DIR"
+          TARBALL="$FT_DIR/freetype-2.10.1.tar.gz"
+          for i in 1 2 3 4 5 6; do
+            echo "=== freetype prefetch attempt $i ==="
+            curl -fSL --retry 3 -o "$TARBALL" "$FT_URL" && file "$TARBALL" | grep -qi gzip && break
+            echo "attempt $i failed"; rm -f "$TARBALL"; sleep 5
           done
-          test -s "$HOME/.buildozer/android/packages/freetype-2.10.1.tar.gz" \
-            && file "$HOME/.buildozer/android/packages/freetype-2.10.1.tar.gz" | grep -qi gzip
+          test -s "$TARBALL" && file "$TARBALL" | grep -qi gzip
+          echo "=== extracting freetype ==="
+          tar -xzf "$TARBALL" -C "$FT_DIR"
+          test -d "$FT_DIR/freetype-2.10.1"
+          echo "=== freetype ready ==="; ls -la "$FT_DIR"
 
       - name: Build APK
         run: |
