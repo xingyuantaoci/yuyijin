@@ -34,23 +34,23 @@ jobs:
       - name: Install buildozer
         run: pip3 install buildozer==1.5.0 cython==0.29.36 virtualenv
 
-      - name: Clone & patch python-for-android
+      - name: Build APK
         run: |
-          # Savannah 死站持续 502。直接克隆 p4a 稳定版，把 freetype 食谱里的
-          # 下载地址换成可用的 SourceForge 镜像，并让 buildozer 用这份本地 p4a。
           set -e
-          git clone --depth 1 --branch v2024.01.21 \
-            https://github.com/kivy/python-for-android.git
-          FT=python-for-android/pythonforandroid/recipes/freetype/__init__.py
-          grep -n "url" "$FT" || true
+          # 第一段：buildozer 首次运行会把 p4a 克隆到 .buildozer/android/platform/python-for-android，
+          # 随后在 freetype（Savannah 死站 502）处失败。忽略这次失败，目的是拿到 p4a 源码。
+          echo "=== first run: let buildozer clone p4a (expected to fail at freetype) ==="
+          buildozer android debug || true
+
+          # 第二段：直接改 buildozer 克隆下来的 p4a freetype 食谱，把死站换成 SourceForge 镜像。
+          FT=.buildozer/android/platform/python-for-android/pythonforandroid/recipes/freetype/__init__.py
+          echo "=== original freetype recipe url ==="; grep -n "url" "$FT"
           sed -i \
             's#https://download.savannah.gnu.org/releases/freetype/freetype-{version}.tar.gz#https://downloads.sourceforge.net/project/freetype/freetype2/{version}/freetype-{version}.tar.gz#' \
             "$FT"
-          echo "=== patched freetype recipe url ==="
-          grep -n "url" "$FT"
+          echo "=== patched freetype recipe url ==="; grep -n "url" "$FT"
 
-      - name: Build APK
-        run: |
+          # 第三段：真正构建（buildozer 复用已克隆且打了补丁的 p4a）。
           ok=0
           for i in 1 2 3 4 5 6 7 8; do
             echo "=== buildozer attempt $i ==="

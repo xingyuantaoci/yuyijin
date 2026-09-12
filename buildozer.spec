@@ -35,8 +35,6 @@ android.archs = arm64-v8a
 # 关闭不必要的东西
 android.debug = False
 p4a.branch = v2024.01.21
-# 使用工作流中预先克隆并修补过的本地 p4a（freetype 下载源已换成可用镜像）
-p4a.path = ./python-for-android
 release.artifact_formats = apk
 
 [buildozer]
