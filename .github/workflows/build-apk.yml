@@ -34,26 +34,20 @@ jobs:
       - name: Install buildozer
         run: pip3 install buildozer==1.5.0 cython==0.29.36 virtualenv
 
-      - name: Pre-fetch freetype from reliable mirror
+      - name: Clone & patch python-for-android
         run: |
-          # Savannah 下载站持续 502。p4a 判断 freetype 是否已下载完成的依据是
-          # "解压后的源码目录 packages/freetype/freetype-2.10.1/" 是否存在；
-          # 只放 tarball 无效（仍会重新下载）。这里从 SourceForge 下载并解压到位。
+          # Savannah 死站持续 502。直接克隆 p4a 稳定版，把 freetype 食谱里的
+          # 下载地址换成可用的 SourceForge 镜像，并让 buildozer 用这份本地 p4a。
           set -e
-          FT_URL="https://downloads.sourceforge.net/project/freetype/freetype2/2.10.1/freetype-2.10.1.tar.gz"
-          FT_DIR=".buildozer/android/platform/build-arm64-v8a/packages/freetype"
-          mkdir -p "$FT_DIR"
-          TARBALL="$FT_DIR/freetype-2.10.1.tar.gz"
-          for i in 1 2 3 4 5 6; do
-            echo "=== freetype prefetch attempt $i ==="
-            curl -fSL --retry 3 -o "$TARBALL" "$FT_URL" && file "$TARBALL" | grep -qi gzip && break
-            echo "attempt $i failed"; rm -f "$TARBALL"; sleep 5
-          done
-          test -s "$TARBALL" && file "$TARBALL" | grep -qi gzip
-          echo "=== extracting freetype ==="
-          tar -xzf "$TARBALL" -C "$FT_DIR"
-          test -d "$FT_DIR/freetype-2.10.1"
-          echo "=== freetype ready ==="; ls -la "$FT_DIR"
+          git clone --depth 1 --branch v2024.01.21 \
+            https://github.com/kivy/python-for-android.git
+          FT=python-for-android/pythonforandroid/recipes/freetype/__init__.py
+          grep -n "url" "$FT" || true
+          sed -i \
+            's#https://download.savannah.gnu.org/releases/freetype/freetype-{version}.tar.gz#https://downloads.sourceforge.net/project/freetype/freetype2/{version}/freetype-{version}.tar.gz#' \
+            "$FT"
+          echo "=== patched freetype recipe url ==="
+          grep -n "url" "$FT"
 
       - name: Build APK
         run: |
