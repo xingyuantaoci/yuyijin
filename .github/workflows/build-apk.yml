@@ -74,7 +74,7 @@ jobs:
           # 注意：recipe 名是小写，p4a 读的是 URL_numpy（不是 URL_NUMPY）。
           # 老食谱用 pypi.python.org/packages/source/n/numpy/numpy-1.24.3.zip（已 404），
           # 改指向 files.pythonhosted.org 上真实的 1.24.3 sdist。
-          URL_numpy: https://files.pythonhosted.org/packages/2c/d4/590ae7df5044465cc9fa2db152ae12468694d62d952b1528ecff328ef7fc/numpy-1.24.3.tar.gz
+          URL_numpy: https://files.pythonhosted.org/packages/64/4a/b008d1f8a7b9f5206ecf70a53f84e654707e7616a771d84c05151a4713e9/numpy-1.22.3.zip
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
