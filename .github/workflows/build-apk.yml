@@ -32,27 +32,29 @@ jobs:
             libssl-dev automake cmake libffi-dev liblzma-dev
 
       - name: Install buildozer
-        run: pip3 install buildozer==1.5.0 cython==0.29.36 virtualenv
+        run: pip3 install buildozer==1.6.0 virtualenv
 
       - name: Pre-seed freetype source into p4a package cache
         run: |
           # Savannah 死站 502。p4a 的跳过下载逻辑：当 packages/freetype/ 下同时存在
-          #   freetype-2.10.1.tar.gz        （tarball 本体）
-          #   .mark-freetype-2.10.1.tar.gz  （空标记文件）
+          #   freetype-<ver>.tar.gz        （tarball 本体）
+          #   .mark-freetype-<ver>.tar.gz  （空标记文件）
           # 时，它就直接复用、不再访问 Savannah。这里从 SourceForge 下载并放到位。
+          # p4a v2026.05.09 用 freetype 2.14.1。
           set -e
+          FT_VER="2.14.1"
           FT_DIR=".buildozer/android/platform/build-arm64-v8a/packages/freetype"
           mkdir -p "$FT_DIR"
-          TARBALL="$FT_DIR/freetype-2.10.1.tar.gz"
+          TARBALL="$FT_DIR/freetype-$FT_VER.tar.gz"
           for i in 1 2 3 4 5; do
             echo "=== freetype download attempt $i ==="
             curl -fSL --retry 3 -o "$TARBALL" \
-              "https://downloads.sourceforge.net/project/freetype/freetype2/2.10.1/freetype-2.10.1.tar.gz" \
+              "https://downloads.sourceforge.net/project/freetype/freetype2/$FT_VER/freetype-$FT_VER.tar.gz" \
               && file "$TARBALL" | grep -qi gzip && break
             echo "attempt $i failed"; rm -f "$TARBALL"; sleep 5
           done
           test -s "$TARBALL" && file "$TARBALL" | grep -qi gzip
-          touch "$FT_DIR/.mark-freetype-2.10.1.tar.gz"
+          touch "$FT_DIR/.mark-freetype-$FT_VER.tar.gz"
           echo "=== seeded freetype package cache ==="
           ls -la "$FT_DIR"
 
